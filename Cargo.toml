@@ -1,0 +1,32 @@
+[package]
+name = "seaorm-auto-migration"
+version = "0.2.0"
+edition = "2024"
+description = "Auto migration generator for SeaORM — diffs entities against live DB and generates migration files"
+license = "MIT"
+repository = "https://github.com/rinnguyen711/seaorm-auto-migration"
+keywords = ["seaorm", "migration", "database", "postgresql", "codegen"]
+categories = ["command-line-utilities", "database"]
+
+[[bin]]
+name = "seaorm-auto-migration"
+path = "src/main.rs"
+
+[lib]
+name = "seaorm_auto_migration"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+syn = { version = "2", features = ["full", "visit"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
+tokio = { version = "1", features = ["full"] }
+dotenvy = "0.15"
+walkdir = "2"
+chrono = "0.4"
+rand = "0.8"
+quote = "1"
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"
