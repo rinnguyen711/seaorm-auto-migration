@@ -34,23 +34,6 @@ seaorm-auto-migration generate "add desc to posts" \
 | `--database-url` | `DATABASE_URL` env | PostgreSQL connection URL |
 | `--no-destructive` | false | Skip `DropColumn`, `DropTable`, `DropForeignKey`, `DropIndex` generation |
 
-## What it detects
-
-| Change | Generated operation |
-|--------|-------------------|
-| New field in entity | `AddColumn` |
-| New entity file | `CreateTable` |
-| Field removed from entity | `DropColumn` |
-| Entity file removed | `DropTable` |
-| Nullability change on a field | `AlterColumn` (SET/DROP NOT NULL) |
-| Column type change | `AlterColumnType` (raw SQL with USING cast — review before running) |
-| FK in entity (`belongs_to`) not in DB | `AddForeignKey` |
-| FK in DB not in entity | `DropForeignKey` |
-| Field with `#[sea_orm(unique)]` not indexed in DB | `CreateIndex` (unique) |
-| Field with `#[sea_orm(indexed)]` not indexed in DB | `CreateIndex` |
-| Multi-column index in entity not in DB | `CreateIndex` |
-| Index in DB not in entity | `DropIndex` |
-
 ## Multi-column indexes
 
 Declare multi-column indexes at the struct level alongside `table_name`:
@@ -68,9 +51,39 @@ pub struct Model { ... }
 
 Index names are auto-generated as `idx_{table}_{col1}_{col2}[_unique]`.
 
+## Rename column detection
+
+When a column disappears from an entity and a new column appears on the same table with matching type, nullability, and primary key flag, the tool prompts interactively:
+
+```
+Did you rename column "old_name" to "new_name" on table "posts"? [y/N]
+```
+
+- `y` → emits `RenameColumn` (non-destructive, reversible)
+- `N` or empty → emits `DropColumn + AddColumn` as usual (DropColumn is gated by `--no-destructive`)
+
+Rename + type change simultaneously is not detected as a rename (it appears as drop + add).
+
+## What it detects
+
+| Change | Generated operation |
+|--------|-------------------|
+| New field in entity | `AddColumn` |
+| New entity file | `CreateTable` |
+| Field removed from entity | `DropColumn` |
+| Entity file removed | `DropTable` |
+| Nullability change on a field | `AlterColumn` (SET/DROP NOT NULL) |
+| Column type change | `AlterColumnType` (raw SQL with USING cast — review before running) |
+| FK in entity (`belongs_to`) not in DB | `AddForeignKey` |
+| FK in DB not in entity | `DropForeignKey` |
+| Field with `#[sea_orm(unique)]` not indexed in DB | `CreateIndex` (unique) |
+| Field with `#[sea_orm(indexed)]` not indexed in DB | `CreateIndex` |
+| Multi-column index in entity not in DB | `CreateIndex` |
+| Index in DB not in entity | `DropIndex` |
+| Column renamed (confirmed interactively) | `RenameColumn` |
+
 ## What it does NOT detect
 
-- Renames
 - Partial indexes, expression indexes, non-default index methods (btree assumed)
 - Composite (multi-column) foreign keys
 - FKs on newly created tables (run the tool twice: first to create the table, then to add the FK)
