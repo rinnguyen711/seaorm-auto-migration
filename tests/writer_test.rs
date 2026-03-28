@@ -327,3 +327,31 @@ fn test_writer_drop_multi_column_index_down_recreates_index() {
     assert!(output.contains(".col(Posts::Title)"), "down migration should contain .col(Posts::Title)");
     assert!(output.contains(".col(Posts::Body)"), "down migration should contain .col(Posts::Body)");
 }
+
+#[test]
+fn test_writer_rename_column_up() {
+    let ops = vec![Operation::RenameColumn {
+        table: "posts".to_string(),
+        from_name: "old_name".to_string(),
+        to_name: "new_name".to_string(),
+    }];
+    let output = render_migration(&ops, "rename_col");
+    // render_up produces: .table(Posts::Table).rename_column(Posts::OldName, Posts::NewName)
+    assert!(output.contains(".rename_column(Posts::OldName, Posts::NewName)"),
+        "up migration should contain rename_column call\nGot:\n{}", output);
+    assert!(output.contains("OldName"), "Iden enum should contain OldName variant");
+    assert!(output.contains("NewName"), "Iden enum should contain NewName variant");
+}
+
+#[test]
+fn test_writer_rename_column_down() {
+    let ops = vec![Operation::RenameColumn {
+        table: "posts".to_string(),
+        from_name: "old_name".to_string(),
+        to_name: "new_name".to_string(),
+    }];
+    let output = render_migration(&ops, "rename_col");
+    // render_down swaps from_name/to_name
+    assert!(output.contains(".rename_column(Posts::NewName, Posts::OldName)"),
+        "down migration should swap names\nGot:\n{}", output);
+}
