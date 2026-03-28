@@ -101,7 +101,13 @@ async fn main() -> anyhow::Result<()> {
             let db_schemas = reader::read_schema(&pool).await?;
 
             // Compute diff
-            let result = diff::compute_diff(&entity_schemas, &db_schemas, !no_destructive);
+            let ask_rename = |table: &str, from: &str, to: &str| -> bool {
+                eprint!("Did you rename column \"{}\" to \"{}\" on table \"{}\"? [y/N] ", from, to, table);
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).unwrap_or(0);
+                input.trim().eq_ignore_ascii_case("y")
+            };
+            let result = diff::compute_diff(&entity_schemas, &db_schemas, !no_destructive, ask_rename);
             if result.ops.is_empty() {
                 if result.destructive_skipped == 0 {
                     println!("No changes detected.");

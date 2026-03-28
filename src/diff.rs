@@ -11,6 +11,7 @@ pub fn compute_diff(
     entities: &[EntitySchema],
     db_tables: &[TableSchema],
     allow_destructive: bool,
+    ask_rename: impl Fn(&str, &str, &str) -> bool,
 ) -> DiffResult {
     let mut ops = Vec::new();
     let mut destructive_skipped = 0usize;
@@ -40,15 +41,16 @@ pub fn compute_diff(
                 let entity_col_names: std::collections::HashSet<&str> =
                     entity.columns.iter().map(|c| c.name.as_str()).collect();
 
-                // Fields in entity not in DB → AddColumn
+                // --- Column diff ---
+                // Phase 1: collect added/dropped without pushing ops.
+                // AlterColumnType and AlterColumn are pushed immediately (not rename candidates).
+                let mut added: Vec<ColumnDef> = Vec::new();
+                let mut dropped: Vec<ColumnDef> = Vec::new();
+
                 for col in &entity.columns {
                     match db_col_map.get(col.name.as_str()) {
-                        None => ops.push(Operation::AddColumn {
-                            table: entity.table.clone(),
-                            column: col.clone(),
-                        }),
+                        None => added.push(col.clone()),
                         Some(db_col) => {
-                            // Type mismatch → AlterColumnType (raw SQL with USING cast)
                             if db_col.col_type != col.col_type {
                                 ops.push(Operation::AlterColumnType {
                                     table: entity.table.clone(),
@@ -57,14 +59,12 @@ pub fn compute_diff(
                                     to: col.col_type.clone(),
                                 });
                             }
-                            // PK mismatch → warn + skip
                             if db_col.primary_key != col.primary_key {
                                 eprintln!(
                                     "Primary key change detected on {}.{} — not supported in v1, migrate manually.",
                                     entity.table, col.name
                                 );
                             }
-                            // Nullable mismatch → AlterColumn
                             if db_col.nullable != col.nullable {
                                 ops.push(Operation::AlterColumn {
                                     table: entity.table.clone(),
@@ -76,22 +76,67 @@ pub fn compute_diff(
                     }
                 }
 
-                // DB columns not in entity → DropColumn (destructive)
                 for db_col in &db_table.columns {
                     if !entity_col_names.contains(db_col.name.as_str()) {
-                        if allow_destructive {
-                            ops.push(Operation::DropColumn {
+                        dropped.push(db_col.clone());
+                    }
+                }
+
+                // Phase 2: rename detection.
+                // consumed tracks column names (both from_name and to_name) that have been matched.
+                // Only updated on confirm — declined prompts do not add to consumed.
+                // ask_rename is called regardless of allow_destructive.
+                let mut consumed: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+                for dropped_col in &dropped {
+                    if consumed.contains(&dropped_col.name) { continue; }
+
+                    let candidates: Vec<&ColumnDef> = added.iter()
+                        .filter(|a| {
+                            !consumed.contains(&a.name)
+                                && a.col_type == dropped_col.col_type
+                                && a.nullable == dropped_col.nullable
+                                && a.primary_key == dropped_col.primary_key
+                        })
+                        .collect();
+
+                    for candidate in candidates {
+                        if ask_rename(&entity.table, &dropped_col.name, &candidate.name) {
+                            ops.push(Operation::RenameColumn {
                                 table: entity.table.clone(),
-                                column: db_col.clone(),
+                                from_name: dropped_col.name.clone(),
+                                to_name: candidate.name.clone(),
                             });
-                        } else {
-                            eprintln!(
-                                "Warning: skipping DropColumn {}.{} (re-run without --no-destructive to include)",
-                                entity.table, db_col.name
-                            );
-                            destructive_skipped += 1;
+                            consumed.insert(dropped_col.name.clone());
+                            consumed.insert(candidate.name.clone());
+                            break;
                         }
                     }
+                }
+
+                // Phase 3: push remaining ops.
+                for col in &dropped {
+                    if consumed.contains(&col.name) { continue; }
+                    if allow_destructive {
+                        ops.push(Operation::DropColumn {
+                            table: entity.table.clone(),
+                            column: col.clone(),
+                        });
+                    } else {
+                        eprintln!(
+                            "Warning: skipping DropColumn {}.{} (re-run without --no-destructive to include)",
+                            entity.table, col.name
+                        );
+                        destructive_skipped += 1;
+                    }
+                }
+
+                for col in &added {
+                    if consumed.contains(&col.name) { continue; }
+                    ops.push(Operation::AddColumn {
+                        table: entity.table.clone(),
+                        column: col.clone(),
+                    });
                 }
 
                 // --- FK diff ---

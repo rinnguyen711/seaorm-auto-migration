@@ -57,6 +57,10 @@ pub fn render_migration(ops: &[Operation], _migration_name: &str) -> String {
                     table_columns.entry(pascal(table)).or_default().push(pascal(col));
                 }
             }
+            Operation::RenameColumn { table, from_name, to_name } => {
+                table_columns.entry(pascal(table)).or_default()
+                    .extend([pascal(from_name), pascal(to_name)]);
+            }
         }
     }
 
@@ -194,6 +198,12 @@ fn render_up(op: &Operation) -> String {
                 index.name, pascal(table)
             )
         }
+        Operation::RenameColumn { table, from_name, to_name } => {
+            format!(
+                "        manager\n            .alter_table(\n                Table::alter()\n                    .table({}::Table)\n                    .rename_column({}::{}, {}::{})\n                    .to_owned(),\n            )\n            .await?;\n",
+                pascal(table), pascal(table), pascal(from_name), pascal(table), pascal(to_name)
+            )
+        }
     }
 }
 
@@ -257,6 +267,13 @@ fn render_down(op: &Operation) -> String {
         }
         Operation::DropIndex { table, index } => {
             render_up(&Operation::CreateIndex { table: table.clone(), index: index.clone() })
+        }
+        Operation::RenameColumn { table, from_name, to_name } => {
+            render_up(&Operation::RenameColumn {
+                table: table.clone(),
+                from_name: to_name.clone(),  // swap: down reverses the rename
+                to_name: from_name.clone(),
+            })
         }
     }
 }

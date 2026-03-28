@@ -195,6 +195,11 @@ pub enum Operation {
         table: String,
         index: IndexDef,
     },
+    RenameColumn {
+        table: String,
+        from_name: String,
+        to_name: String,
+    },
 }
 
 impl Operation {
