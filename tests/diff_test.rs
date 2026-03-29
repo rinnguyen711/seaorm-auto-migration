@@ -819,3 +819,43 @@ fn test_circular_fk_between_new_tables_demotes_one_fk() {
     assert_eq!(create_count, 2, "both tables must be created");
     assert_eq!(fk_count, 1, "one FK must be demoted to AddForeignKey to break the cycle");
 }
+
+#[test]
+fn test_existing_table_fk_to_new_table_ordering() {
+    // posts exists in DB, tags is new.
+    // posts gets a new FK to tags in this diff.
+    // CreateTable(tags) must come before AddForeignKey(posts→tags).
+    let entities = vec![
+        entity_with_fks(
+            "posts",
+            vec![
+                col("id", ColType::BigInteger, false, true),
+                col("tag_id", ColType::BigInteger, true, false),
+            ],
+            vec![fk("fk_posts_tag_id", "tag_id", "tags", "id")],
+        ),
+        entity_with_fks(
+            "tags",
+            vec![col("id", ColType::BigInteger, false, true)],
+            vec![],
+        ),
+    ];
+    let db = vec![db_table_with_fks(
+        "posts",
+        vec![col("id", ColType::BigInteger, false, true)],
+        vec![],
+    )];
+
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+
+    // Expect: CreateTable(tags), AddColumn(posts.tag_id), AddForeignKey(posts→tags)
+    let create_pos = result.ops.iter().position(|op| matches!(op, Operation::CreateTable { table, .. } if table == "tags"));
+    let fk_pos = result.ops.iter().position(|op| matches!(op, Operation::AddForeignKey { table, .. } if table == "posts"));
+
+    assert!(create_pos.is_some(), "CreateTable(tags) should be emitted");
+    assert!(fk_pos.is_some(), "AddForeignKey(posts→tags) should be emitted");
+    assert!(
+        create_pos.unwrap() < fk_pos.unwrap(),
+        "CreateTable(tags) must come before AddForeignKey(posts→tags)"
+    );
+}
