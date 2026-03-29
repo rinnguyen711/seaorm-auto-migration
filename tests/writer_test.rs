@@ -356,3 +356,30 @@ fn test_writer_rename_column_down() {
     assert!(output.contains(".rename_column(Posts::NewName, Posts::OldName)"),
         "down migration should swap names\nGot:\n{}", output);
 }
+
+#[test]
+fn test_render_create_table_with_inline_fk() {
+    use seaorm_auto_migration::types::ForeignKeyDef;
+
+    let ops = vec![Operation::CreateTable {
+        table: "posts".to_string(),
+        columns: vec![
+            ColumnDef { name: "id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: true, unique: false, indexed: false },
+            ColumnDef { name: "user_id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: false, unique: false, indexed: false },
+        ],
+        foreign_keys: vec![ForeignKeyDef {
+            name: "fk_posts_user_id".to_string(),
+            from_col: "user_id".to_string(),
+            to_table: "users".to_string(),
+            to_col: "id".to_string(),
+        }],
+    }];
+
+    let content = render_migration(&ops, "create_posts");
+    assert!(content.contains("foreign_key"), "should contain .foreign_key() call");
+    assert!(content.contains("fk_posts_user_id"), "should contain FK name");
+    assert!(content.contains("Users"), "should reference Users Iden");
+    assert!(content.contains("enum Users"), "Users Iden enum should be generated");
+    assert!(content.contains("Users::Id"), "should reference Users::Id in .to() call");
+    assert!(content.contains("Posts::UserId"), "should reference Posts::UserId in .from() call");
+}

@@ -27,9 +27,13 @@ pub fn render_migration(ops: &[Operation], _migration_name: &str) -> String {
             Operation::DropColumn { table, column } => {
                 table_columns.entry(pascal(table)).or_default().push(pascal(&column.name));
             }
-            Operation::CreateTable { table, columns, .. } => {
+            Operation::CreateTable { table, columns, foreign_keys } => {
                 let cols: Vec<String> = columns.iter().map(|c| pascal(&c.name)).collect();
                 table_columns.entry(pascal(table)).or_default().extend(cols);
+                for fk in foreign_keys {
+                    table_columns.entry(pascal(table)).or_default().push(pascal(&fk.from_col));
+                    table_columns.entry(pascal(&fk.to_table)).or_default().push(pascal(&fk.to_col));
+                }
             }
             Operation::DropTable { table, columns } => {
                 let cols: Vec<String> = columns.iter().map(|c| pascal(&c.name)).collect();
@@ -127,7 +131,7 @@ fn render_up(op: &Operation) -> String {
                 pascal(table), pascal(table), pascal(&column.name)
             )
         }
-        Operation::CreateTable { table, columns, .. } => {
+        Operation::CreateTable { table, columns, foreign_keys } => {
             let mut s = format!(
                 "        manager\n            .create_table(\n                Table::create()\n                    .table({}::Table)\n                    .if_not_exists()\n",
                 pascal(table)
@@ -142,6 +146,14 @@ fn render_up(op: &Operation) -> String {
                 s.push_str(&format!(
                     "                    .col(ColumnDef::new({}::{}).{}{}{})\n",
                     pascal(table), pascal(&col.name), col.col_type.to_seaorm_method(), nullable, pk
+                ));
+            }
+            for fk in foreign_keys {
+                s.push_str(&format!(
+                    "                    .foreign_key(\n                        ForeignKey::create()\n                            .name(\"{}\")\n                            .from({}::Table, {}::{})\n                            .to({}::Table, {}::{})\n                    )\n",
+                    fk.name,
+                    pascal(table), pascal(table), pascal(&fk.from_col),
+                    pascal(&fk.to_table), pascal(&fk.to_table), pascal(&fk.to_col)
                 ));
             }
             s.push_str("                    .to_owned(),\n            )\n            .await?;\n");
