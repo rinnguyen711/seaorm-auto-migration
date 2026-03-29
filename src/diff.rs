@@ -32,7 +32,7 @@ pub fn compute_diff(
                 ops.push(Operation::CreateTable {
                     table: entity.table.clone(),
                     columns: entity.columns.clone(),
-                    foreign_keys: vec![],
+                    foreign_keys: entity.foreign_keys.clone(),
                 });
             }
             Some(db_table) => {

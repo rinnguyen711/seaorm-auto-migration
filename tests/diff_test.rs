@@ -688,3 +688,37 @@ fn test_rename_column_declined_no_destructive() {
     assert!(!result.ops.iter().any(|op| matches!(op, Operation::DropColumn { .. })));
     assert!(result.ops.iter().any(|op| matches!(op, Operation::AddColumn { .. })));
 }
+
+#[test]
+fn test_new_table_with_fk_to_existing_table_inlines_fk() {
+    // posts is new, users already exists in DB.
+    // FK should be inline in CreateTable, not a separate AddForeignKey.
+    let entities = vec![
+        // users entity already exists in DB
+        entity("users", vec![col("id", ColType::BigInteger, false, true)]),
+        // posts is new with FK to users
+        entity_with_fks(
+            "posts",
+            vec![
+                col("id", ColType::BigInteger, false, true),
+                col("user_id", ColType::BigInteger, false, false),
+            ],
+            vec![fk("fk_posts_user_id", "user_id", "users", "id")],
+        ),
+    ];
+    let db = vec![db_table("users", vec![col("id", ColType::BigInteger, false, true)])];
+
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+    assert_eq!(result.ops.len(), 1, "expected only CreateTable, got: {:?}", result.ops);
+    match &result.ops[0] {
+        Operation::CreateTable { table, foreign_keys, .. } => {
+            assert_eq!(table, "posts");
+            assert_eq!(foreign_keys.len(), 1);
+            assert_eq!(foreign_keys[0].name, "fk_posts_user_id");
+            assert_eq!(foreign_keys[0].from_col, "user_id");
+            assert_eq!(foreign_keys[0].to_table, "users");
+            assert_eq!(foreign_keys[0].to_col, "id");
+        }
+        other => panic!("expected CreateTable, got {:?}", other),
+    }
+}
