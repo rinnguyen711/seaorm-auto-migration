@@ -722,3 +722,100 @@ fn test_new_table_with_fk_to_existing_table_inlines_fk() {
         other => panic!("expected CreateTable, got {:?}", other),
     }
 }
+
+#[test]
+fn test_two_new_tables_sorted_by_fk_dependency() {
+    // posts depends on users (FK user_id → users.id).
+    // Both are new. users must come first in the output.
+    let entities = vec![
+        entity_with_fks(
+            "posts",
+            vec![
+                col("id", ColType::BigInteger, false, true),
+                col("user_id", ColType::BigInteger, false, false),
+            ],
+            vec![fk("fk_posts_user_id", "user_id", "users", "id")],
+        ),
+        entity_with_fks(
+            "users",
+            vec![col("id", ColType::BigInteger, false, true)],
+            vec![],
+        ),
+    ];
+    let db = vec![];
+
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+    assert_eq!(result.ops.len(), 2);
+    let tables: Vec<&str> = result.ops.iter().map(|op| match op {
+        Operation::CreateTable { table, .. } => table.as_str(),
+        _ => panic!("expected only CreateTable ops"),
+    }).collect();
+    assert_eq!(tables, vec!["users", "posts"], "users must come before posts");
+}
+
+#[test]
+fn test_new_table_with_two_fks_to_same_table_not_treated_as_cyclic() {
+    // orders has two FKs to customers — should not be treated as cyclic.
+    // customers must come before orders.
+    let entities = vec![
+        entity_with_fks(
+            "orders",
+            vec![
+                col("id", ColType::BigInteger, false, true),
+                col("customer_id", ColType::BigInteger, false, false),
+                col("billing_customer_id", ColType::BigInteger, false, false),
+            ],
+            vec![
+                fk("fk_orders_customer_id", "customer_id", "customers", "id"),
+                fk("fk_orders_billing_customer_id", "billing_customer_id", "customers", "id"),
+            ],
+        ),
+        entity_with_fks(
+            "customers",
+            vec![col("id", ColType::BigInteger, false, true)],
+            vec![],
+        ),
+    ];
+    let db = vec![];
+
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+
+    let create_count = result.ops.iter().filter(|op| matches!(op, Operation::CreateTable { .. })).count();
+    let fk_count = result.ops.iter().filter(|op| matches!(op, Operation::AddForeignKey { .. })).count();
+
+    assert_eq!(create_count, 2, "both tables should be created");
+    assert_eq!(fk_count, 0, "no FKs should be demoted — this is not a cycle");
+
+    let tables: Vec<&str> = result.ops.iter().filter_map(|op| match op {
+        Operation::CreateTable { table, .. } => Some(table.as_str()),
+        _ => None,
+    }).collect();
+    assert_eq!(tables, vec!["customers", "orders"], "customers must come before orders");
+}
+
+#[test]
+fn test_circular_fk_between_new_tables_demotes_one_fk() {
+    // a has FK to b, b has FK to a — a cycle.
+    // One FK must be demoted to a trailing AddForeignKey.
+    let entities = vec![
+        entity_with_fks(
+            "a",
+            vec![col("id", ColType::BigInteger, false, true), col("b_id", ColType::BigInteger, true, false)],
+            vec![fk("fk_a_b", "b_id", "b", "id")],
+        ),
+        entity_with_fks(
+            "b",
+            vec![col("id", ColType::BigInteger, false, true), col("a_id", ColType::BigInteger, true, false)],
+            vec![fk("fk_b_a", "a_id", "a", "id")],
+        ),
+    ];
+    let db = vec![];
+
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+
+    let create_count = result.ops.iter().filter(|op| matches!(op, Operation::CreateTable { .. })).count();
+    let fk_count = result.ops.iter().filter(|op| matches!(op, Operation::AddForeignKey { .. })).count();
+
+    assert_eq!(create_count, 2, "both tables must be created");
+    assert_eq!(fk_count, 1, "one FK must be demoted to AddForeignKey to break the cycle");
+}
