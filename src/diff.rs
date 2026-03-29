@@ -259,5 +259,138 @@ pub fn compute_diff(
         );
     }
 
+    let ops = toposort_create_table_ops(ops);
+
     DiffResult { ops, destructive_skipped }
+}
+
+/// Topologically sort CreateTable ops so that referenced tables come before
+/// the tables that reference them. Non-CreateTable ops are left in place at
+/// the end of the list. Cycles are broken by demoting one FK out of
+/// CreateTable into a trailing AddForeignKey.
+fn toposort_create_table_ops(ops: Vec<Operation>) -> Vec<Operation> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+
+    let mut create_ops: Vec<Operation> = Vec::new();
+    let mut other_ops: Vec<Operation> = Vec::new();
+    for op in ops {
+        if matches!(op, Operation::CreateTable { .. }) {
+            create_ops.push(op);
+        } else {
+            other_ops.push(op);
+        }
+    }
+
+    if create_ops.is_empty() {
+        return other_ops;
+    }
+
+    // Set of tables being created in this diff
+    let creating: HashSet<String> = create_ops.iter().map(|op| match op {
+        Operation::CreateTable { table, .. } => table.clone(),
+        _ => unreachable!(),
+    }).collect();
+
+    // deps[X] = set of tables that depend on X (i.e. have an FK to X)
+    // in_degree[T] = number of new tables T depends on
+    let mut deps: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut in_degree: HashMap<String, usize> = HashMap::new();
+
+    for op in &create_ops {
+        if let Operation::CreateTable { table, foreign_keys, .. } = op {
+            in_degree.entry(table.clone()).or_insert(0);
+            // Deduplicate referenced tables to avoid double-counting in_degree
+            let referenced: HashSet<&str> = foreign_keys.iter()
+                .filter(|fk| creating.contains(&fk.to_table) && fk.to_table != *table)
+                .map(|fk| fk.to_table.as_str())
+                .collect();
+            for ref_table in referenced {
+                deps.entry(ref_table.to_string()).or_default().insert(table.clone());
+                *in_degree.entry(table.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Kahn's algorithm — process zero-in-degree tables first, sorted for determinism
+    let mut queue: VecDeque<String> = {
+        let mut v: Vec<String> = in_degree.iter()
+            .filter(|(_, d)| **d == 0)
+            .map(|(t, _)| t.clone())
+            .collect();
+        v.sort();
+        v.into_iter().collect()
+    };
+
+    let mut sorted_tables: Vec<String> = Vec::new();
+    while let Some(table) = queue.pop_front() {
+        sorted_tables.push(table.clone());
+        if let Some(dependents) = deps.get(&table) {
+            let mut dependents: Vec<String> = dependents.iter().cloned().collect();
+            dependents.sort();
+            for dep in dependents {
+                let d = in_degree.get_mut(&dep).unwrap();
+                *d -= 1;
+                if *d == 0 {
+                    queue.push_back(dep);
+                }
+            }
+        }
+    }
+
+    // Any table not yet in sorted_tables is part of a cycle
+    let cyclic: Vec<String> = {
+        let mut v: Vec<String> = creating.iter()
+            .filter(|t| !sorted_tables.contains(*t))
+            .cloned()
+            .collect();
+        v.sort();
+        v
+    };
+
+    let mut extra_fk_ops: Vec<Operation> = Vec::new();
+
+    // Build map: table name → CreateTable op
+    let mut create_map: HashMap<String, Operation> = create_ops.into_iter().map(|op| {
+        let table = match &op {
+            Operation::CreateTable { table, .. } => table.clone(),
+            _ => unreachable!(),
+        };
+        (table, op)
+    }).collect();
+
+    // Break cycles: for each cyclic table, demote FKs that point to cyclic tables
+    // that come *after* this table in the sorted cyclic list. This ensures that
+    // for each cycle edge (a→b), exactly one direction is demoted (the one where
+    // the source table comes later alphabetically), keeping the other inline.
+    for (i, table) in cyclic.iter().enumerate() {
+        if let Some(Operation::CreateTable { foreign_keys, .. }) = create_map.get_mut(table) {
+            let mut inline: Vec<crate::types::ForeignKeyDef> = Vec::new();
+            for fk in foreign_keys.drain(..) {
+                let target_idx = cyclic.iter().position(|t| t == &fk.to_table);
+                if let Some(j) = target_idx {
+                    if j >= i {
+                        // Target is at same index or later: demote this FK
+                        extra_fk_ops.push(Operation::AddForeignKey {
+                            table: table.clone(),
+                            fk,
+                        });
+                    } else {
+                        inline.push(fk);
+                    }
+                } else {
+                    inline.push(fk);
+                }
+            }
+            *foreign_keys = inline;
+        }
+        sorted_tables.push(table.clone());
+    }
+
+    // Reassemble: sorted CreateTable ops, then demoted FK ops, then everything else
+    let mut result: Vec<Operation> = sorted_tables.into_iter()
+        .filter_map(|t| create_map.remove(&t))
+        .collect();
+    result.extend(extra_fk_ops);
+    result.extend(other_ops);
+    result
 }
