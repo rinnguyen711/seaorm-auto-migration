@@ -152,6 +152,7 @@ pub enum Operation {
     CreateTable {
         table: String,
         columns: Vec<ColumnDef>,
+        foreign_keys: Vec<ForeignKeyDef>,
     },
     AddColumn {
         table: String,

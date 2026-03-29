@@ -27,7 +27,7 @@ pub fn render_migration(ops: &[Operation], _migration_name: &str) -> String {
             Operation::DropColumn { table, column } => {
                 table_columns.entry(pascal(table)).or_default().push(pascal(&column.name));
             }
-            Operation::CreateTable { table, columns } => {
+            Operation::CreateTable { table, columns, .. } => {
                 let cols: Vec<String> = columns.iter().map(|c| pascal(&c.name)).collect();
                 table_columns.entry(pascal(table)).or_default().extend(cols);
             }
@@ -127,7 +127,7 @@ fn render_up(op: &Operation) -> String {
                 pascal(table), pascal(table), pascal(&column.name)
             )
         }
-        Operation::CreateTable { table, columns } => {
+        Operation::CreateTable { table, columns, .. } => {
             let mut s = format!(
                 "        manager\n            .create_table(\n                Table::create()\n                    .table({}::Table)\n                    .if_not_exists()\n",
                 pascal(table)
@@ -235,7 +235,7 @@ fn render_down(op: &Operation) -> String {
         }
         Operation::DropTable { table, columns } => {
             // Inverse of DropTable is CreateTable (reconstruct from columns)
-            render_up(&Operation::CreateTable { table: table.clone(), columns: columns.clone() })
+            render_up(&Operation::CreateTable { table: table.clone(), columns: columns.clone(), foreign_keys: vec![] })
         }
         Operation::AlterColumn { table, column, nullable } => {
             // Inverse: flip the nullability back

@@ -50,6 +50,7 @@ fn test_render_create_table() {
             ColumnDef { name: "id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: true, unique: false, indexed: false },
             ColumnDef { name: "name".to_string(), col_type: ColType::String, nullable: false, primary_key: false, unique: false, indexed: false },
         ],
+        foreign_keys: vec![],
     }];
 
     let content = render_migration(&ops, "create_widgets");
