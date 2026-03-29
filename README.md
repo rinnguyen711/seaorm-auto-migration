@@ -75,6 +75,7 @@ Rename + type change simultaneously is not detected as a rename (it appears as d
 | Nullability change on a field | `AlterColumn` (SET/DROP NOT NULL) |
 | Column type change | `AlterColumnType` (raw SQL with USING cast — review before running) |
 | FK in entity (`belongs_to`) not in DB | `AddForeignKey` |
+| FK on a newly created table | Inline `ForeignKey` in `CreateTable` (topologically sorted) |
 | FK in DB not in entity | `DropForeignKey` |
 | Field with `#[sea_orm(unique)]` not indexed in DB | `CreateIndex` (unique) |
 | Field with `#[sea_orm(indexed)]` not indexed in DB | `CreateIndex` |
@@ -86,7 +87,6 @@ Rename + type change simultaneously is not detected as a rename (it appears as d
 
 - Partial indexes, expression indexes, non-default index methods (btree assumed)
 - Composite (multi-column) foreign keys
-- FKs on newly created tables (run the tool twice: first to create the table, then to add the FK)
 - MySQL / SQLite (PostgreSQL only)
 
 ## Supported field types
