@@ -906,3 +906,128 @@ fn test_normalize_default_escaped_single_quote() {
     // Postgres stores single quotes inside strings as ''
     assert_eq!(ColType::normalize_default("'it''s fine'::text"), "it's fine");
 }
+
+fn col_with_default(name: &str, col_type: ColType, nullable: bool, default: Option<&str>) -> ColumnDef {
+    ColumnDef {
+        name: name.to_string(),
+        col_type,
+        nullable,
+        primary_key: false,
+        unique: false,
+        indexed: false,
+        default_value: default.map(|s| s.to_string()),
+    }
+}
+
+#[test]
+fn test_entity_adds_default_emits_set_default() {
+    let entities = vec![
+        EntitySchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("active"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let db = vec![
+        TableSchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, None)],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+    assert!(result.ops.iter().any(|op| matches!(op, Operation::SetDefault { table, column, value }
+        if table == "users" && column == "status" && value == "active")));
+}
+
+#[test]
+fn test_entity_changes_default_emits_set_default() {
+    let entities = vec![
+        EntitySchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("inactive"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let db = vec![
+        TableSchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("active"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+    assert!(result.ops.iter().any(|op| matches!(op, Operation::SetDefault { table, column, value }
+        if table == "users" && column == "status" && value == "inactive")));
+}
+
+#[test]
+fn test_entity_removes_default_emits_drop_default() {
+    let entities = vec![
+        EntitySchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, None)],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let db = vec![
+        TableSchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("active"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+    assert!(result.ops.iter().any(|op| matches!(op, Operation::DropDefault { table, column, old_value }
+        if table == "users" && column == "status" && old_value == "active")));
+}
+
+#[test]
+fn test_entity_removes_default_skipped_without_destructive() {
+    let entities = vec![
+        EntitySchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, None)],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let db = vec![
+        TableSchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("active"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let result = compute_diff(&entities, &db, false, |_, _, _| false);
+    assert!(!result.ops.iter().any(|op| matches!(op, Operation::DropDefault { .. })));
+}
+
+#[test]
+fn test_same_default_no_op() {
+    let entities = vec![
+        EntitySchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("active"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let db = vec![
+        TableSchema {
+            table: "users".to_string(),
+            columns: vec![col_with_default("status", ColType::String, false, Some("active"))],
+            foreign_keys: vec![],
+            indexes: vec![],
+        },
+    ];
+    let result = compute_diff(&entities, &db, true, |_, _, _| false);
+    assert!(!result.ops.iter().any(|op| matches!(op, Operation::SetDefault { .. } | Operation::DropDefault { .. })));
+}

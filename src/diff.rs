@@ -73,6 +73,38 @@ pub fn compute_diff(
                                     nullable: col.nullable,
                                 });
                             }
+                            match (col.default_value.as_deref(), db_col.default_value.as_deref()) {
+                                (Some(e), Some(d)) if e != d => {
+                                    ops.push(Operation::SetDefault {
+                                        table: entity.table.clone(),
+                                        column: col.name.clone(),
+                                        value: e.to_string(),
+                                    });
+                                }
+                                (Some(e), None) => {
+                                    ops.push(Operation::SetDefault {
+                                        table: entity.table.clone(),
+                                        column: col.name.clone(),
+                                        value: e.to_string(),
+                                    });
+                                }
+                                (None, Some(d)) => {
+                                    if allow_destructive {
+                                        ops.push(Operation::DropDefault {
+                                            table: entity.table.clone(),
+                                            column: col.name.clone(),
+                                            old_value: d.to_string(),
+                                        });
+                                    } else {
+                                        eprintln!(
+                                            "Warning: skipping DropDefault {}.{} (re-run without --no-destructive to include)",
+                                            entity.table, col.name
+                                        );
+                                        destructive_skipped += 1;
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
                     }
                 }
