@@ -32,7 +32,7 @@ seaorm-auto-migration generate "add desc to posts" \
 | `--entities` | `src/entities/` | Path to entity `.rs` files |
 | `--migration-dir` | `migration/src/` | Where to write migration files |
 | `--database-url` | `DATABASE_URL` env | PostgreSQL connection URL |
-| `--no-destructive` | false | Skip `DropColumn`, `DropTable`, `DropForeignKey`, `DropIndex` generation |
+| `--no-destructive` | false | Skip `DropColumn`, `DropTable`, `DropForeignKey`, `DropIndex`, `DropDefault` generation |
 
 ## Multi-column indexes
 
@@ -82,6 +82,24 @@ Rename + type change simultaneously is not detected as a rename (it appears as d
 | Multi-column index in entity not in DB | `CreateIndex` |
 | Index in DB not in entity | `DropIndex` |
 | Column renamed (confirmed interactively) | `RenameColumn` |
+| `default_value` added or changed on a field | `SetDefault` |
+| `default_value` removed from a field | `DropDefault` (gated by `--no-destructive`) |
+
+## Default values
+
+Declare a column default with `#[sea_orm(default_value = "...")]`:
+
+```rust
+#[sea_orm(default_value = "active")]
+pub status: String,
+
+#[sea_orm(default_value = "0")]
+pub count: i32,
+```
+
+- Adding or changing a default emits `SetDefault` (non-destructive).
+- Removing a default emits `DropDefault`, which is gated by `--no-destructive`.
+- `default_expr` (SQL function defaults like `now()`) is not supported and emits a warning.
 
 ## What it does NOT detect
 
