@@ -263,6 +263,7 @@ fn extract_columns(node: &ItemStruct) -> (Vec<ColumnDef>, Vec<IndexDef>) {
         let mut primary_key = false;
         let mut unique = false;
         let mut indexed = false;
+        let mut default_value: Option<String> = None;
 
         for attr in &field.attrs {
             if !attr.path().is_ident("sea_orm") { continue; }
@@ -273,6 +274,17 @@ fn extract_columns(node: &ItemStruct) -> (Vec<ColumnDef>, Vec<IndexDef>) {
                     if meta.path().is_ident("primary_key") { primary_key = true; }
                     if meta.path().is_ident("unique") { unique = true; }
                     if meta.path().is_ident("indexed") { indexed = true; }
+                    if let syn::Meta::NameValue(nv) = meta {
+                        if nv.path.is_ident("default_value") {
+                            if let syn::Expr::Lit(expr_lit) = &nv.value {
+                                if let syn::Lit::Str(s) = &expr_lit.lit {
+                                    default_value = Some(s.value());
+                                }
+                            }
+                        } else if nv.path.is_ident("default_expr") {
+                            eprintln!("Warning: default_expr on '{}' not supported — skipping", name);
+                        }
+                    }
                 }
             }
         }
@@ -281,7 +293,7 @@ fn extract_columns(node: &ItemStruct) -> (Vec<ColumnDef>, Vec<IndexDef>) {
 
         match ColType::from_rust_type(&rust_type) {
             Some(col_type) => {
-                columns.push(ColumnDef { name: name.clone(), col_type, nullable, primary_key, unique, indexed, default_value: None });
+                columns.push(ColumnDef { name: name.clone(), col_type, nullable, primary_key, unique, indexed, default_value: default_value.clone() });
                 // Build partial IndexDef (table name filled in visit_item_struct)
                 // unique takes precedence — a unique field always gets a unique index
                 if unique {

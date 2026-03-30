@@ -360,3 +360,45 @@ fn test_parser_combined_field_and_struct_indexes() {
     assert_eq!(multi.unique, false);
     assert_eq!(multi.name, "idx_users_email_name");
 }
+
+#[test]
+fn test_parse_default_value_attribute() {
+    let src = r#"
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "users")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+            #[sea_orm(default_value = "active")]
+            pub status: String,
+            pub name: String,
+        }
+    "#;
+    let schemas = parse_entities_from_str(src);
+    assert_eq!(schemas.len(), 1);
+    let schema = &schemas[0];
+    let status_col = schema.columns.iter().find(|c| c.name == "status").unwrap();
+    assert_eq!(status_col.default_value, Some("active".to_string()));
+    let name_col = schema.columns.iter().find(|c| c.name == "name").unwrap();
+    assert_eq!(name_col.default_value, None);
+}
+
+#[test]
+fn test_parse_default_expr_emits_warning_and_skips() {
+    // default_expr should produce no default_value (None) and emit a warning
+    let src = r#"
+        #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+        #[sea_orm(table_name = "items")]
+        pub struct Model {
+            #[sea_orm(primary_key)]
+            pub id: i32,
+            #[sea_orm(default_expr = "now()")]
+            pub created_at: DateTime,
+        }
+    "#;
+    let schemas = parse_entities_from_str(src);
+    assert_eq!(schemas.len(), 1);
+    let schema = &schemas[0];
+    let col = schema.columns.iter().find(|c| c.name == "created_at").unwrap();
+    assert_eq!(col.default_value, None);
+}
