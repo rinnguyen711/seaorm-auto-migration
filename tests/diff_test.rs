@@ -859,3 +859,50 @@ fn test_existing_table_fk_to_new_table_ordering() {
         "CreateTable(tags) must come before AddForeignKey(posts→tags)"
     );
 }
+
+#[test]
+fn test_normalize_default_quoted_string_with_cast() {
+    assert_eq!(ColType::normalize_default("'active'::character varying"), "active");
+}
+
+#[test]
+fn test_normalize_default_quoted_string_with_text_cast() {
+    assert_eq!(ColType::normalize_default("'hello world'::text"), "hello world");
+}
+
+#[test]
+fn test_normalize_default_true_uppercase() {
+    assert_eq!(ColType::normalize_default("TRUE"), "true");
+}
+
+#[test]
+fn test_normalize_default_false_uppercase() {
+    assert_eq!(ColType::normalize_default("FALSE"), "false");
+}
+
+#[test]
+fn test_normalize_default_numeric_integer() {
+    assert_eq!(ColType::normalize_default("0"), "0");
+}
+
+#[test]
+fn test_normalize_default_numeric_decimal() {
+    assert_eq!(ColType::normalize_default("3.14"), "3.14");
+}
+
+#[test]
+fn test_normalize_default_empty_string() {
+    assert_eq!(ColType::normalize_default("''::text"), "");
+}
+
+#[test]
+fn test_normalize_default_url_value_not_truncated() {
+    // URL contains '::' inside a quoted string — must NOT be stripped at the first '::'
+    assert_eq!(ColType::normalize_default("'http://example.com'::text"), "http://example.com");
+}
+
+#[test]
+fn test_normalize_default_escaped_single_quote() {
+    // Postgres stores single quotes inside strings as ''
+    assert_eq!(ColType::normalize_default("'it''s fine'::text"), "it's fine");
+}

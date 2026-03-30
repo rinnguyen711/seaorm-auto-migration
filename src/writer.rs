@@ -220,9 +220,10 @@ fn render_up(op: &Operation) -> String {
             )
         }
         Operation::SetDefault { table, column, value } => {
+            let sql_value = format_default_value(value);
             format!(
                 "        manager\n            .get_connection()\n            .execute_unprepared(\"ALTER TABLE \\\"{}\\\" ALTER COLUMN \\\"{}\\\" SET DEFAULT {}\")\n            .await?;\n",
-                table, column, value
+                table, column, sql_value
             )
         }
         Operation::DropDefault { table, column, .. } => {
@@ -369,6 +370,27 @@ pub fn update_lib_rs(lib_path: &Path, migration_name: &str) -> anyhow::Result<()
 
     std::fs::write(lib_path, new_lines.join("\n") + "\n")?;
     Ok(())
+}
+
+/// Format a normalized default value literal for use in SQL.
+/// Booleans and numeric values are emitted unquoted; everything else is single-quoted
+/// with any embedded single quotes escaped as ''.
+fn format_default_value(value: &str) -> String {
+    // Booleans
+    if value == "true" || value == "false" {
+        return value.to_string();
+    }
+    // Numeric: integer or decimal (optional leading minus)
+    let is_numeric = {
+        let trimmed = value.trim_start_matches('-');
+        !trimmed.is_empty() && trimmed.chars().all(|c| c.is_ascii_digit() || c == '.')
+            && trimmed.chars().filter(|&c| c == '.').count() <= 1
+    };
+    if is_numeric {
+        return value.to_string();
+    }
+    // String: escape embedded single quotes and wrap in single quotes
+    format!("'{}'", value.replace('\'', "''"))
 }
 
 /// Convert snake_case or space-separated words to PascalCase

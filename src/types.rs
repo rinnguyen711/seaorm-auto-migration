@@ -114,19 +114,47 @@ impl ColType {
     ///   `''::text`                   → `""`
     pub fn normalize_default(raw: &str) -> String {
         let s = raw.trim();
-        // Strip type cast suffix: everything after `::`
-        let s = if let Some(idx) = s.find("::") {
-            &s[..idx]
-        } else {
-            s
+        // Strip type cast suffix: find the last `::` that is outside single quotes.
+        // We scan from the end to find `::` that isn't inside a quoted string.
+        let cast_strip_end = {
+            let bytes = s.as_bytes();
+            let mut result = s.len();
+            let mut in_quote = false;
+            let mut i = 0;
+            while i < bytes.len() {
+                match bytes[i] {
+                    b'\'' if !in_quote => {
+                        in_quote = true;
+                        i += 1;
+                    }
+                    b'\'' if in_quote => {
+                        // Check for escaped quote: ''
+                        if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+                            i += 2; // skip both quotes
+                        } else {
+                            in_quote = false;
+                            i += 1;
+                        }
+                    }
+                    b':' if !in_quote && i + 1 < bytes.len() && bytes[i + 1] == b':' => {
+                        result = i;
+                        break;
+                    }
+                    _ => { i += 1; }
+                }
+            }
+            result
         };
-        let s = s.trim();
+        let s = s[..cast_strip_end].trim();
         // Strip surrounding single quotes
         let s = if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
             &s[1..s.len() - 1]
         } else {
             s
         };
+        // Unescape doubled single quotes: '' → '
+        let unescaped = s.replace("''", "'");
+        let s = unescaped.as_str();
         // Lowercase booleans
         match s {
             "TRUE" | "true" => "true".to_string(),
