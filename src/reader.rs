@@ -10,6 +10,7 @@ pub async fn read_schema(pool: &PgPool) -> anyhow::Result<Vec<TableSchema>> {
             c.column_name,
             c.data_type,
             c.is_nullable,
+            c.column_default,
             CASE WHEN kcu.column_name IS NOT NULL THEN true ELSE false END::boolean AS is_primary_key
         FROM information_schema.columns c
         LEFT JOIN information_schema.key_column_usage kcu
@@ -37,6 +38,7 @@ pub async fn read_schema(pool: &PgPool) -> anyhow::Result<Vec<TableSchema>> {
         let column_name: String = row.try_get("column_name")?;
         let data_type: String = row.try_get("data_type")?;
         let is_nullable: String = row.try_get("is_nullable")?;
+        let column_default: Option<String> = row.try_get("column_default")?;
         let is_primary_key: bool = row.try_get("is_primary_key")?;
 
         let col_type = match ColType::from_sql_type(&data_type) {
@@ -57,7 +59,7 @@ pub async fn read_schema(pool: &PgPool) -> anyhow::Result<Vec<TableSchema>> {
             primary_key: is_primary_key,
             unique: false,
             indexed: false,
-            default_value: None,
+            default_value: column_default.as_deref().map(ColType::normalize_default),
         };
 
         map.entry(table_name).or_default().push(col);
