@@ -51,7 +51,7 @@ pub struct Model { ... }
 
 Index names are auto-generated as `idx_{table}_{col1}_{col2}[_unique]`.
 
-The DB reader detects existing multi-column indexes, so no false `CreateIndex` is emitted for composite indexes already in the database.
+The DB reader detects existing multi-column indexes, so no false `CreateIndex` is emitted for multi-column indexes already in the database.
 
 ## Rename column detection
 
