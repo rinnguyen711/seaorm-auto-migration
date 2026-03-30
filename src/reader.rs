@@ -125,29 +125,26 @@ pub async fn read_schema(pool: &PgPool) -> anyhow::Result<Vec<TableSchema>> {
     WHERE n.nspname = 'public'
       AND t.relkind = 'r'
       AND NOT ix.indisprimary
-      AND array_length(ix.indkey, 1) = 1
-    ORDER BY t.relname, i.relname
+    ORDER BY t.relname, i.relname, array_position(ix.indkey, a.attnum)
     "#,
     )
     .fetch_all(pool)
     .await?;
 
+    let raw_rows: Vec<(String, String, String, bool)> = idx_rows
+        .iter()
+        .map(|row| {
+            let table_name: String = row.try_get("table_name").unwrap();
+            let index_name: String = row.try_get("index_name").unwrap();
+            let column_name: String = row.try_get("column_name").unwrap();
+            let is_unique: bool = row.try_get("is_unique").unwrap();
+            (table_name, index_name, column_name, is_unique)
+        })
+        .collect();
+
     // NOTE: must be `mut` so we can call `.remove()` below
     let mut idx_map: std::collections::BTreeMap<String, Vec<IndexDef>> =
-        std::collections::BTreeMap::new();
-
-    for row in &idx_rows {
-        let table_name: String = row.try_get("table_name")?;
-        let index_name: String = row.try_get("index_name")?;
-        let column_name: String = row.try_get("column_name")?;
-        let is_unique: bool = row.try_get("is_unique")?;
-
-        idx_map.entry(table_name).or_default().push(IndexDef {
-            name: index_name,
-            columns: vec![column_name],
-            unique: is_unique,
-        });
-    }
+        group_index_rows(raw_rows).into_iter().collect();
 
     Ok(map
         .into_iter()

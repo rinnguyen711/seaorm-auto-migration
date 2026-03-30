@@ -86,3 +86,14 @@ fn test_group_preserves_column_order_non_alphabetical() {
     let result = group_index_rows(rows);
     assert_eq!(result[0].1[0].columns, vec!["z_col", "a_col"]);
 }
+
+#[test]
+fn test_group_preserves_column_order() {
+    // Simulate pg returning columns in index order: first column listed first
+    let rows = vec![
+        ("orders".to_string(), "idx_orders_user_created".to_string(), "user_id".to_string(), false),
+        ("orders".to_string(), "idx_orders_user_created".to_string(), "created_at".to_string(), false),
+    ];
+    let result = group_index_rows(rows);
+    assert_eq!(result[0].1[0].columns, vec!["user_id", "created_at"]);
+}
