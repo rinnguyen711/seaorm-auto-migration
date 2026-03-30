@@ -384,3 +384,77 @@ fn test_render_create_table_with_inline_fk() {
     assert!(content.contains("Users::Id"), "should reference Users::Id in .to() call");
     assert!(content.contains("Posts::UserId"), "should reference Posts::UserId in .from() call");
 }
+
+#[test]
+fn test_writer_set_default_string_value() {
+    let ops = vec![Operation::SetDefault {
+        table: "users".to_string(),
+        column: "status".to_string(),
+        value: "active".to_string(),
+    }];
+    let content = render_migration(&ops, "set_default_status");
+    assert!(content.contains("SET DEFAULT 'active'"), "string default should be single-quoted");
+    assert!(content.contains("ALTER TABLE \\\"users\\\" ALTER COLUMN \\\"status\\\""));
+}
+
+#[test]
+fn test_writer_set_default_numeric_value() {
+    let ops = vec![Operation::SetDefault {
+        table: "items".to_string(),
+        column: "count".to_string(),
+        value: "0".to_string(),
+    }];
+    let content = render_migration(&ops, "set_default_count");
+    assert!(content.contains("SET DEFAULT 0"), "numeric default should not be quoted");
+}
+
+#[test]
+fn test_writer_set_default_boolean_value() {
+    let ops = vec![Operation::SetDefault {
+        table: "items".to_string(),
+        column: "active".to_string(),
+        value: "true".to_string(),
+    }];
+    let content = render_migration(&ops, "set_default_active");
+    assert!(content.contains("SET DEFAULT true"), "boolean default should not be quoted");
+}
+
+#[test]
+fn test_writer_drop_default() {
+    let ops = vec![Operation::DropDefault {
+        table: "users".to_string(),
+        column: "status".to_string(),
+        old_value: "active".to_string(),
+    }];
+    let content = render_migration(&ops, "drop_default_status");
+    assert!(content.contains("DROP DEFAULT"));
+    assert!(content.contains("ALTER TABLE \\\"users\\\" ALTER COLUMN \\\"status\\\""));
+}
+
+#[test]
+fn test_writer_set_default_down_is_drop_default() {
+    let ops = vec![Operation::SetDefault {
+        table: "users".to_string(),
+        column: "status".to_string(),
+        value: "active".to_string(),
+    }];
+    let content = render_migration(&ops, "set_default_status");
+    // down() should DROP DEFAULT
+    let down_idx = content.find("async fn down").unwrap();
+    let down_section = &content[down_idx..];
+    assert!(down_section.contains("DROP DEFAULT"), "down() for SetDefault should DROP DEFAULT");
+}
+
+#[test]
+fn test_writer_drop_default_down_is_set_default() {
+    let ops = vec![Operation::DropDefault {
+        table: "users".to_string(),
+        column: "status".to_string(),
+        old_value: "active".to_string(),
+    }];
+    let content = render_migration(&ops, "drop_default_status");
+    // down() should SET DEFAULT 'active'
+    let down_idx = content.find("async fn down").unwrap();
+    let down_section = &content[down_idx..];
+    assert!(down_section.contains("SET DEFAULT 'active'"), "down() for DropDefault should SET DEFAULT with old value");
+}
