@@ -131,20 +131,18 @@ pub async fn read_schema(pool: &PgPool) -> anyhow::Result<Vec<TableSchema>> {
     .fetch_all(pool)
     .await?;
 
-    let raw_rows: Vec<(String, String, String, bool)> = idx_rows
-        .iter()
-        .map(|row| {
-            let table_name: String = row.try_get("table_name").unwrap();
-            let index_name: String = row.try_get("index_name").unwrap();
-            let column_name: String = row.try_get("column_name").unwrap();
-            let is_unique: bool = row.try_get("is_unique").unwrap();
-            (table_name, index_name, column_name, is_unique)
-        })
-        .collect();
+    let mut raw_idx_rows: Vec<(String, String, String, bool)> = Vec::with_capacity(idx_rows.len());
+    for row in &idx_rows {
+        let table_name: String = row.try_get("table_name")?;
+        let index_name: String = row.try_get("index_name")?;
+        let column_name: String = row.try_get("column_name")?;
+        let is_unique: bool = row.try_get("is_unique")?;
+        raw_idx_rows.push((table_name, index_name, column_name, is_unique));
+    }
 
     // NOTE: must be `mut` so we can call `.remove()` below
     let mut idx_map: std::collections::BTreeMap<String, Vec<IndexDef>> =
-        group_index_rows(raw_rows).into_iter().collect();
+        group_index_rows(raw_idx_rows).into_iter().collect();
 
     Ok(map
         .into_iter()
