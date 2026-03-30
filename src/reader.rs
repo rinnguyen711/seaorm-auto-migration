@@ -186,15 +186,13 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
 }
 
 /// Group raw index rows (one row per column) into a list of (table_name, Vec<IndexDef>).
-/// Input rows are `(table_name, index_name, column_name, is_unique)`, already ordered by
-/// `table_name, index_name` (matching the SQL ORDER BY).
+/// Input rows are `(table_name, index_name, column_name, is_unique)`.
+/// Output tables and indexes within each table are ordered alphabetically (BTreeMap).
 /// Columns within each index are accumulated in the order they appear in `rows`.
 pub fn group_index_rows(rows: Vec<(String, String, String, bool)>) -> Vec<(String, Vec<IndexDef>)> {
-    use std::collections::BTreeMap;
-
-    // idx_map: table_name → BTreeMap<index_name → (is_unique, Vec<column_name>)>
-    // BTreeMap keeps tables and index names in insertion/alphabetical order.
-    let mut idx_map: BTreeMap<String, BTreeMap<String, (bool, Vec<String>)>> = BTreeMap::new();
+    // idx_map: table_name → index_name → (is_unique, Vec<column_name>)
+    // BTreeMap gives deterministic alphabetical ordering for tables and index names.
+    let mut idx_map: std::collections::BTreeMap<String, std::collections::BTreeMap<String, (bool, Vec<String>)>> = std::collections::BTreeMap::new();
 
     for (table_name, index_name, column_name, is_unique) in rows {
         idx_map

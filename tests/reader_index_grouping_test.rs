@@ -75,3 +75,14 @@ fn test_group_empty_rows() {
     let result = group_index_rows(rows);
     assert!(result.is_empty());
 }
+
+#[test]
+fn test_group_preserves_column_order_non_alphabetical() {
+    // Columns arrive in non-alphabetical order — order must be preserved, not sorted
+    let rows = vec![
+        ("orders".to_string(), "idx_orders_z_a".to_string(), "z_col".to_string(), false),
+        ("orders".to_string(), "idx_orders_z_a".to_string(), "a_col".to_string(), false),
+    ];
+    let result = group_index_rows(rows);
+    assert_eq!(result[0].1[0].columns, vec!["z_col", "a_col"]);
+}
