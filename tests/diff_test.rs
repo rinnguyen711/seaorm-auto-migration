@@ -2,7 +2,7 @@ use seaorm_auto_migration::diff::compute_diff;
 use seaorm_auto_migration::types::*;
 
 fn col(name: &str, col_type: ColType, nullable: bool, primary_key: bool) -> ColumnDef {
-    ColumnDef { name: name.to_string(), col_type, nullable, primary_key, unique: false, indexed: false }
+    ColumnDef { name: name.to_string(), col_type, nullable, primary_key, unique: false, indexed: false, default_value: None }
 }
 
 fn entity(table: &str, columns: Vec<ColumnDef>) -> EntitySchema {

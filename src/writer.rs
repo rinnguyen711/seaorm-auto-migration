@@ -65,6 +65,9 @@ pub fn render_migration(ops: &[Operation], _migration_name: &str) -> String {
                 table_columns.entry(pascal(table)).or_default()
                     .extend([pascal(from_name), pascal(to_name)]);
             }
+            Operation::SetDefault { .. } | Operation::DropDefault { .. } => {
+                // Raw SQL operations — no Iden variants needed
+            }
         }
     }
 
@@ -216,6 +219,18 @@ fn render_up(op: &Operation) -> String {
                 pascal(table), pascal(table), pascal(from_name), pascal(table), pascal(to_name)
             )
         }
+        Operation::SetDefault { table, column, value } => {
+            format!(
+                "        manager\n            .get_connection()\n            .execute_unprepared(\"ALTER TABLE \\\"{}\\\" ALTER COLUMN \\\"{}\\\" SET DEFAULT {}\")\n            .await?;\n",
+                table, column, value
+            )
+        }
+        Operation::DropDefault { table, column, .. } => {
+            format!(
+                "        manager\n            .get_connection()\n            .execute_unprepared(\"ALTER TABLE \\\"{}\\\" ALTER COLUMN \\\"{}\\\" DROP DEFAULT\")\n            .await?;\n",
+                table, column
+            )
+        }
     }
 }
 
@@ -285,6 +300,22 @@ fn render_down(op: &Operation) -> String {
                 table: table.clone(),
                 from_name: to_name.clone(),  // swap: down reverses the rename
                 to_name: from_name.clone(),
+            })
+        }
+        Operation::SetDefault { table, column, value } => {
+            // Inverse of SetDefault is DropDefault
+            render_up(&Operation::DropDefault {
+                table: table.clone(),
+                column: column.clone(),
+                old_value: value.clone(),
+            })
+        }
+        Operation::DropDefault { table, column, old_value } => {
+            // Inverse of DropDefault is SetDefault
+            render_up(&Operation::SetDefault {
+                table: table.clone(),
+                column: column.clone(),
+                value: old_value.clone(),
             })
         }
     }

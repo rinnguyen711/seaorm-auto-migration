@@ -28,6 +28,7 @@ fn test_render_add_column() {
             primary_key: false,
             unique: false,
             indexed: false,
+            default_value: None,
         },
     }];
 
@@ -47,8 +48,8 @@ fn test_render_create_table() {
     let ops = vec![Operation::CreateTable {
         table: "widgets".to_string(),
         columns: vec![
-            ColumnDef { name: "id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: true, unique: false, indexed: false },
-            ColumnDef { name: "name".to_string(), col_type: ColType::String, nullable: false, primary_key: false, unique: false, indexed: false },
+            ColumnDef { name: "id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: true, unique: false, indexed: false, default_value: None },
+            ColumnDef { name: "name".to_string(), col_type: ColType::String, nullable: false, primary_key: false, unique: false, indexed: false, default_value: None },
         ],
         foreign_keys: vec![],
     }];
@@ -364,8 +365,8 @@ fn test_render_create_table_with_inline_fk() {
     let ops = vec![Operation::CreateTable {
         table: "posts".to_string(),
         columns: vec![
-            ColumnDef { name: "id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: true, unique: false, indexed: false },
-            ColumnDef { name: "user_id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: false, unique: false, indexed: false },
+            ColumnDef { name: "id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: true, unique: false, indexed: false, default_value: None },
+            ColumnDef { name: "user_id".to_string(), col_type: ColType::BigInteger, nullable: false, primary_key: false, unique: false, indexed: false, default_value: None },
         ],
         foreign_keys: vec![ForeignKeyDef {
             name: "fk_posts_user_id".to_string(),

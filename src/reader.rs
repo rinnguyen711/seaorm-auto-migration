@@ -57,6 +57,7 @@ pub async fn read_schema(pool: &PgPool) -> anyhow::Result<Vec<TableSchema>> {
             primary_key: is_primary_key,
             unique: false,
             indexed: false,
+            default_value: None,
         };
 
         map.entry(table_name).or_default().push(col);

@@ -6,6 +6,7 @@ pub struct ColumnDef {
     pub primary_key: bool,
     pub unique: bool,
     pub indexed: bool,
+    pub default_value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +102,36 @@ impl ColType {
             Self::Date => "date()",
             Self::Json => "json()",
             Self::Uuid => "uuid()",
+        }
+    }
+
+    /// Normalize a Postgres column_default string for comparison with entity literals.
+    /// Examples:
+    ///   `'active'::character varying` → `"active"`
+    ///   `'hello world'::text`        → `"hello world"`
+    ///   `TRUE`                       → `"true"`
+    ///   `0`                          → `"0"`
+    ///   `''::text`                   → `""`
+    pub fn normalize_default(raw: &str) -> String {
+        let s = raw.trim();
+        // Strip type cast suffix: everything after `::`
+        let s = if let Some(idx) = s.find("::") {
+            &s[..idx]
+        } else {
+            s
+        };
+        let s = s.trim();
+        // Strip surrounding single quotes
+        let s = if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
+            &s[1..s.len() - 1]
+        } else {
+            s
+        };
+        // Lowercase booleans
+        match s {
+            "TRUE" | "true" => "true".to_string(),
+            "FALSE" | "false" => "false".to_string(),
+            other => other.to_string(),
         }
     }
 }
@@ -201,12 +232,22 @@ pub enum Operation {
         from_name: String,
         to_name: String,
     },
+    SetDefault {
+        table: String,
+        column: String,
+        value: String,
+    },
+    DropDefault {
+        table: String,
+        column: String,
+        old_value: String,
+    },
 }
 
 impl Operation {
     pub fn is_destructive(&self) -> bool {
         matches!(self,
-            Self::DropColumn { .. } | Self::DropTable { .. } | Self::DropForeignKey { .. } | Self::DropIndex { .. }
+            Self::DropColumn { .. } | Self::DropTable { .. } | Self::DropForeignKey { .. } | Self::DropIndex { .. } | Self::DropDefault { .. }
         )
     }
 }

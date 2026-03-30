@@ -281,7 +281,7 @@ fn extract_columns(node: &ItemStruct) -> (Vec<ColumnDef>, Vec<IndexDef>) {
 
         match ColType::from_rust_type(&rust_type) {
             Some(col_type) => {
-                columns.push(ColumnDef { name: name.clone(), col_type, nullable, primary_key, unique, indexed });
+                columns.push(ColumnDef { name: name.clone(), col_type, nullable, primary_key, unique, indexed, default_value: None });
                 // Build partial IndexDef (table name filled in visit_item_struct)
                 // unique takes precedence — a unique field always gets a unique index
                 if unique {
