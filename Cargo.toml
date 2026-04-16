@@ -1,6 +1,6 @@
 [package]
 name = "seaorm-auto-migration"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 description = "Auto migration generator for SeaORM — diffs entities against live DB and generates migration files"
 license = "MIT"
@@ -27,6 +27,7 @@ chrono = "0.4"
 rand = "0.8"
 quote = "1"
 anyhow = "1"
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3"

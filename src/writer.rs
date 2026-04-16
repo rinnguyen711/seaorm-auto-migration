@@ -332,6 +332,10 @@ pub fn update_lib_rs(lib_path: &Path, migration_name: &str) -> anyhow::Result<()
         return Err(anyhow::anyhow!("Migration '{}' is already registered in lib.rs", migration_name));
     }
 
+    // Normalize single-line vec![...] to multi-line so we can reliably insert into it.
+    // Matches: vec![<anything not containing a newline>]
+    let content = normalize_vec_to_multiline(&content);
+
     let lines: Vec<&str> = content.lines().collect();
 
     // Find insertion point for mod declaration
@@ -370,6 +374,31 @@ pub fn update_lib_rs(lib_path: &Path, migration_name: &str) -> anyhow::Result<()
 
     std::fs::write(lib_path, new_lines.join("\n") + "\n")?;
     Ok(())
+}
+
+/// Expand a single-line `vec![item1, item2]` inside the migrations() fn to multi-line format
+/// so that `update_lib_rs` can reliably find the closing `]` on its own line.
+fn normalize_vec_to_multiline(content: &str) -> String {
+    // Match vec![ ... ] on a single line (no newlines inside).
+    // We look for the pattern inside the migrations() function body.
+    let re = regex::Regex::new(r"([ \t]*)vec!\[([^\]\n]*)\]").unwrap();
+    re.replace(content, |caps: &regex::Captures| {
+        let indent = &caps[1];
+        let inner = caps[2].trim();
+        if inner.is_empty() {
+            // Empty vec: vec![] → multi-line with just the brackets
+            return format!("{}vec![\n{}        ]", indent, indent);
+        }
+        // Split on commas, trim, drop empty entries (trailing comma)
+        let items: Vec<&str> = inner.split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let item_lines: String = items.iter()
+            .map(|item| format!("{}            {},\n", indent, item))
+            .collect();
+        format!("{}vec![\n{}{}        ]", indent, item_lines, indent)
+    }).into_owned()
 }
 
 /// Format a normalized default value literal for use in SQL.
